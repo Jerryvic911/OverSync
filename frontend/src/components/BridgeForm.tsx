@@ -225,7 +225,8 @@ const updateTransactionStatus = (orderId: string, status: 'pending' | 'completed
 };
 
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
-const API_BASE_URL = 'https://oversync-1nchfusion-2.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://oversync-1nchfusion-2.onrender.com';
+const ENABLE_MOCK_DATA = import.meta.env.VITE_ENABLE_MOCK_DATA === 'true';
 
 export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormProps) {
   const [direction, setDirection] = useState<'eth_to_xlm' | 'xlm_to_eth'>('eth_to_xlm');
@@ -907,37 +908,35 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
               setIsSubmitting(false);
             } else {
               console.error('❌ Processing request failed:', processResponse.status);
-              
-              // Development: Show success even if processing fails
-              console.log('🚀 Development mode: Showing success despite processing failure');
-              
-              // Update transaction status to completed (development mode)
-              updateTransactionStatus(result.orderId, 'completed');
-              
-              // Update status to completed (development mode)
-              setStatusMessage('Completed ✅');
-              setIsSubmitting(false);
-              
-              // Show success anyway for development
-              setOrderId(txHash);
-              setOrderCreated(true);
+
+              if (ENABLE_MOCK_DATA) {
+                console.log('🧪 Mock data enabled: showing success despite processing failure');
+                updateTransactionStatus(result.orderId, 'completed');
+                setStatusMessage('Completed ✅');
+                setIsSubmitting(false);
+                setOrderId(txHash);
+                setOrderCreated(true);
+              } else {
+                updateTransactionStatus(result.orderId, 'failed');
+                setStatusMessage('İşlem başarısız ❌');
+                setIsSubmitting(false);
+              }
             }
           } catch (processError) {
             console.error('❌ Processing request error:', processError);
-            
-            // Development: Show success even if processing throws error
-            console.log('🚀 Development mode: Showing success despite processing error');
-            
-            // Update transaction status to completed (development mode)
-            updateTransactionStatus(result.orderId, 'completed');
-            
-            // Update status to completed (development mode)
-            setStatusMessage('Completed ✅');
-            setIsSubmitting(false);
-            
-            // Show success anyway for development
-            setOrderId(txHash);
-            setOrderCreated(true);
+
+            if (ENABLE_MOCK_DATA) {
+              console.log('🧪 Mock data enabled: showing success despite processing error');
+              updateTransactionStatus(result.orderId, 'completed');
+              setStatusMessage('Completed ✅');
+              setIsSubmitting(false);
+              setOrderId(txHash);
+              setOrderCreated(true);
+            } else {
+              updateTransactionStatus(result.orderId, 'failed');
+              setStatusMessage('İşlem başarısız ❌');
+              setIsSubmitting(false);
+            }
           }
           
           // Store transaction details for tracking

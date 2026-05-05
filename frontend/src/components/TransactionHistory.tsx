@@ -26,15 +26,15 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
+  const enableMockData = import.meta.env.VITE_ENABLE_MOCK_DATA === 'true';
 
-  // Mock transaction data for demo
   useEffect(() => {
     // Check current network to show appropriate mock data
     const urlParams = new URLSearchParams(window.location.search);
     const networkParam = urlParams.get('network');
     const isTestnetMode = networkParam === 'testnet';
     
-    const mockTransactions: Transaction[] = [
+    const mockTransactions: Transaction[] = enableMockData ? [
       {
         id: '1',
         txHash: '0x1234567890abcdef1234567890abcdef12345678',
@@ -81,7 +81,7 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
       {
         id: '4',
         txHash: '0x9876543210fedcba9876543210fedcba98765432',
-        fromNetwork: isTestnetMode ? 'ETH Sepolia' : 'ETH Mainnet',  
+        fromNetwork: isTestnetMode ? 'ETH Sepolia' : 'ETH Mainnet', 
         toNetwork: isTestnetMode ? 'Stellar Testnet' : 'Stellar Mainnet',
         fromToken: 'ETH',
         toToken: 'XLM',
@@ -92,7 +92,7 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
         ethTxHash: '0x9876543210fedcba9876543210fedcba98765432',
         direction: 'eth-to-xlm'
       }
-    ];
+    ] : [];
 
     // Try to get real transactions from localStorage first
     const savedTransactions = localStorage.getItem('bridge_transactions');
@@ -101,9 +101,12 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
         const realTransactions = JSON.parse(savedTransactions);
         console.log('📊 Found real transactions in localStorage:', realTransactions);
         
-        // Combine real and mock transactions
-        const allTransactions = [...realTransactions, ...mockTransactions];
-        setTransactions(allTransactions);
+        if (enableMockData) {
+          const allTransactions = [...realTransactions, ...mockTransactions];
+          setTransactions(allTransactions);
+        } else {
+          setTransactions(realTransactions);
+        }
       } catch (error) {
         console.log('❌ Error reading localStorage transactions:', error);
         setTransactions(mockTransactions);
@@ -133,7 +136,7 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
         const networkParam = urlParams.get('network');
         const isTestnetMode = networkParam === 'testnet';
         
-        const mockTransactions: Transaction[] = [
+        const mockTransactions: Transaction[] = enableMockData ? [
           {
             id: 'mock1',
             txHash: '0x1234567890abcdef1234567890abcdef12345678',
@@ -149,12 +152,17 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
             stellarTxHash: 'abcd1234567890abcdef1234567890abcdef123456789',
             direction: 'eth-to-xlm'
           }
-        ];
+        ] : [];
         
-        const allTransactions = [...realTransactions, ...mockTransactions];
+        const allTransactions = enableMockData
+          ? [...realTransactions, ...mockTransactions]
+          : realTransactions;
         setTransactions(allTransactions);
       } else {
         console.log('📊 No real transactions found in localStorage');
+        if (!enableMockData) {
+          setTransactions([]);
+        }
       }
     } catch (error) {
       console.log('❌ Failed to refresh from localStorage:', error);

@@ -177,6 +177,10 @@ Before running the project, you need to configure environment variables:
    # Optional API keys:
    ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
    ALCHEMY_API_KEY=YOUR_ALCHEMY_API_KEY
+
+   # Frontend demo controls (optional)
+   VITE_API_BASE_URL=http://localhost:3001
+   VITE_ENABLE_MOCK_DATA=false
    ```
 
 3. **Key Generation (for testnet):**

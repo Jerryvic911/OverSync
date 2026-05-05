@@ -226,6 +226,17 @@ function shouldUseHTLCContract(networkMode?: string): boolean {
   return false; // Always use EscrowFactory for ETH→XLM transactions
 }
 
+function parseCsv(value?: string): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 // Relayer configuration from environment variables
 export const RELAYER_CONFIG = {
   // Service settings
@@ -238,6 +249,7 @@ export const RELAYER_CONFIG = {
   nodeEnv: process.env.NODE_ENV || 'development',
   enableMockMode: process.env.ENABLE_MOCK_MODE === 'true',
   debug: process.env.DEBUG === 'true',
+  resolverAllowlist: parseCsv(process.env.RELAYER_RESOLVER_ADDRESSES),
   
   // Ethereum configuration
   ethereum: {
@@ -1600,6 +1612,13 @@ const activeOrders = new Map();
         if (!privateKey) {
           throw new Error('RELAYER_PRIVATE_KEY environment variable is required');
         }
+
+        if (rpcUrl.includes('YOUR_') || rpcUrl.includes('api_key_here')) {
+          return res.status(500).json({
+            error: 'RPC URL not configured',
+            message: `Set ${orderNetworkMode === 'testnet' ? 'SEPOLIA_RPC_URL' : 'ETHEREUM_RPC_URL'} in environment variables`
+          });
+        }
         
         console.log('💰 REAL MODE: Sending actual ETH transaction');
         console.log('🔗 RPC URL:', rpcUrl);
@@ -1742,6 +1761,19 @@ const activeOrders = new Map();
           gasLimit: 21000,
           gasPrice: ethers.parseUnits('20', 'gwei')
         };
+
+        const gasCost = BigInt(tx.gasLimit) * BigInt(tx.gasPrice);
+        const totalRequired = BigInt(ethAmount) + gasCost;
+
+        if (balance < totalRequired) {
+          return res.status(400).json({
+            error: 'Insufficient relayer balance',
+            relayerAddress: relayerWallet.address,
+            balance: ethers.formatEther(balance),
+            required: ethers.formatEther(totalRequired),
+            message: `Fund relayer wallet on ${orderNetworkMode} before releasing ETH`
+          });
+        }
         
         // Send transaction with retry for rate limiting
         let ethTxResponse;
@@ -1777,66 +1809,33 @@ const activeOrders = new Map();
           }
         }
         console.log('📤 ETH transaction sent:', ethTxResponse.hash);
+        console.log('🌐 View on Etherscan: https://sepolia.etherscan.io/tx/' + ethTxResponse.hash);
         
-        // Wait for confirmation with retry logic
-        let ethTxReceipt;
-        let confirmRetryCount = 0;
-        const maxConfirmRetries = 3;
-        
-        while (confirmRetryCount <= maxConfirmRetries) {
-          try {
-            ethTxReceipt = await ethTxResponse.wait();
-            console.log('✅ ETH transaction confirmed!');
-            break;
-          } catch (confirmError: any) {
-            confirmRetryCount++;
-            
-            // Check for rate limiting during confirmation
-            const isRateLimit = confirmError.code === 429 ||
-                              confirmError.message?.includes('exceeded') ||
-                              confirmError.message?.includes('rate limit');
-            
-            if (isRateLimit && confirmRetryCount <= maxConfirmRetries) {
-              const delayMs = Math.pow(2, confirmRetryCount) * 1000;
-              console.log(`⏳ Rate limit during confirmation (attempt ${confirmRetryCount}/${maxConfirmRetries}). Waiting ${delayMs}ms...`);
-              await new Promise(resolve => setTimeout(resolve, delayMs));
-              continue;
-            }
-            
-            // If not rate limiting or exhausted retries, throw
-            console.error('❌ Transaction confirmation failed:', confirmError);
-            throw confirmError;
-          }
-        }
-        console.log('🔍 ETH tx hash:', ethTxReceipt?.hash);
-        console.log('🌐 View on Etherscan: https://sepolia.etherscan.io/tx/' + ethTxReceipt?.hash);
-        
-        // Update order status if found in memory
         if (storedOrder) {
-          storedOrder.status = 'completed';
+          storedOrder.status = 'eth_tx_sent';
+          storedOrder.ethTxHash = ethTxResponse.hash;
         }
         
-        // Success response
         res.json({
           success: true,
           orderId,
-          ethTxId: ethTxReceipt?.hash,
-          message: 'XLM→ETH swap completed successfully!',
+          ethTxId: ethTxResponse.hash,
+          message: 'XLM→ETH transfer broadcasted',
           details: {
             stellar: {
               txHash: stellarTxHash,
               status: 'confirmed'
             },
             ethereum: {
-              txId: ethTxReceipt?.hash,
-                              amount: `${ethers.formatEther(ethAmount)} ETH`,
+              txId: ethTxResponse.hash,
+              amount: `${ethers.formatEther(ethAmount)} ETH`,
               destination: userEthAddress,
-              status: 'completed'
+              status: 'pending'
             }
           }
         });
         
-        console.log('🎉 XLM→ETH swap completed successfully!');
+        console.log('🎉 XLM→ETH broadcasted successfully');
         
       } catch (ethError: any) {
         console.error('❌ ETH transaction failed:', ethError);
@@ -2437,6 +2436,43 @@ const activeOrders = new Map();
         success: false,
         error: getErrorMessage(error),
         message: 'Status check failed'
+      });
+    }
+  });
+
+  // Check configured resolver allowlist authorization status
+  app.get('/api/admin/resolvers', async (req, res) => {
+    try {
+      const provider = new ethers.JsonRpcProvider(RELAYER_CONFIG.ethereum.rpcUrl);
+      const escrowFactoryContract = new ethers.Contract(getEscrowFactoryAddress(), getEscrowFactoryABI(DEFAULT_NETWORK_MODE === 'mainnet'), provider);
+
+      const relayerPrivateKey = process.env.RELAYER_PRIVATE_KEY || '0x0000000000000000000000000000000000000000000000000000000000000001';
+      const relayerWallet = new ethers.Wallet(relayerPrivateKey);
+      const relayerAddress = relayerWallet.address;
+
+      const addresses = Array.from(new Set([
+        relayerAddress,
+        ...RELAYER_CONFIG.resolverAllowlist
+      ])).filter(Boolean);
+
+      const contractWithProvider = escrowFactoryContract as any;
+      const results = await Promise.all(
+        addresses.map(async (address) => ({
+          address,
+          isAuthorized: await contractWithProvider.authorizedResolvers(address)
+        }))
+      );
+
+      res.json({
+        success: true,
+        resolvers: results
+      });
+    } catch (error) {
+      console.error('❌ Failed to list resolvers:', error);
+      res.status(500).json({
+        success: false,
+        error: getErrorMessage(error),
+        message: 'Resolver list failed'
       });
     }
   });

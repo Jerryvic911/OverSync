@@ -358,6 +358,19 @@ IMPOSSIBLE: Partial execution where one party loses funds
 
 ---
 
+### Relayer SPOF Mitigations
+
+OverSync minimizes relayer risk by **operational separation** and **multi‑resolver authorization**:
+
+- **Multi‑resolver allowlist**: multiple resolver addresses can be authorized on EscrowFactory/HTLCBridge.
+- **Multi‑instance relayers**: run more than one relayer with distinct keys (active‑active or failover).
+- **Stellar account hardening**: move bridge liquidity into **multi‑sig** accounts; relayer runs as a limited signer.
+- **Key rotation**: rotate relayer keys regularly and revoke old resolvers on‑chain.
+
+> Operationally, use `RELAYER_RESOLVER_ADDRESSES` for a resolver allowlist and track authorization status via `/api/admin/resolvers`.
+
+---
+
 ### Security Architecture Layers
 
 #### Layer 1: Cryptographic Security (HTLC Core)

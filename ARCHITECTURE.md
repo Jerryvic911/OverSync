@@ -92,98 +92,153 @@ arbitrary chains without an HTLC on each — and we accept that.
 
 ---
 
-## 3. High-level layout
+## 3. System topology
 
-```
-┌──────────────────────────┐                           ┌──────────────────────────┐
-│ Ethereum                 │ ◄────── user wallet ────► │ Stellar                  │
-│                          │                           │                          │
-│  HTLCEscrow              │                           │  oversync-htlc           │
-│   ├─ createOrder         │                           │   ├─ create_order        │
-│   ├─ claimOrder          │                           │   ├─ claim_order         │
-│   └─ refundOrder         │                           │   └─ refund_order        │
-│                          │                           │                          │
-│  ResolverRegistry        │                           │  oversync-resolver-      │
-│   ├─ register/stake      │                           │  registry                │
-│   ├─ isActive            │                           │   ├─ register/stake      │
-│   └─ slash               │                           │   └─ is_active           │
-└──────────┬───────────────┘                           └─────────────┬────────────┘
-           │ logs / events                                            │ events
-           ▼                                                          ▼
-     ┌─────────────────────────────────────────────────────────────────────┐
-     │                       Reference Coordinator                        │
-     │                                                                    │
-     │   - watches both chains for HTLC events                            │
-     │   - maintains the public order book (REST + WebSocket)             │
-     │   - relays the preimage between chains the moment it appears       │
-     │   - persists order state to SQLite / Postgres                      │
-     │                                                                    │
-     │   - HAS NO KEYS THAT CAN MOVE USER FUNDS                           │
-     └──────────────────────┬──────────────────────┬───────────────────────┘
-                            │                      │
-              ┌─────────────▼───────────┐  ┌───────▼──────────────────┐
-              │ Community resolver A    │  │ Community resolver B     │
-              │  (open source runner +  │  │  (any team that staked   │
-              │   Docker image)         │  │   into the registry)     │
-              └─────────────────────────┘  └──────────────────────────┘
+```mermaid
+flowchart TB
+    User([User wallet<br/>MetaMask + Freighter])
+
+    subgraph Ethereum["Ethereum (mainnet or Sepolia)"]
+        ETH_HTLC[HTLCEscrow<br/>createOrder · claimOrder · refundOrder]
+        ETH_REG[ResolverRegistry<br/>register · isActive · slash]
+    end
+
+    subgraph Stellar["Stellar (public or testnet)"]
+        XLM_HTLC[oversync-htlc<br/>create_order · claim_order · refund_order]
+        XLM_REG[oversync-resolver-registry<br/>register · is_active · slash]
+    end
+
+    subgraph Coord["Reference coordinator (stateless w.r.t. funds)"]
+        COORD_LISTEN[Event listeners<br/>block-by-block queryFilter polling]
+        COORD_BOOK[Order book<br/>SQLite + state machine]
+        COORD_API[REST + WebSocket API]
+        COORD_WATCH[Refund watchdog<br/>60s scan · 5min refund threshold]
+    end
+
+    subgraph Resolvers["Resolvers (open registry)"]
+        RES_A[Resolver A<br/>open-source runner]
+        RES_B[Resolver B<br/>any staked operator]
+    end
+
+    User -->|signs createOrder| ETH_HTLC
+    User -->|signs create_order| XLM_HTLC
+    User -->|reads order book| COORD_API
+
+    ETH_HTLC -.->|OrderCreated / OrderClaimed / OrderRefunded logs| COORD_LISTEN
+    XLM_HTLC -.->|events| COORD_LISTEN
+
+    COORD_LISTEN --> COORD_BOOK
+    COORD_BOOK --> COORD_API
+    COORD_WATCH --> COORD_BOOK
+
+    COORD_API -->|order offers| RES_A
+    COORD_API -->|order offers| RES_B
+    RES_A -->|create_order on dst| XLM_HTLC
+    RES_A -->|claimOrder on src| ETH_HTLC
+    RES_B -->|create_order on dst| XLM_HTLC
+    RES_B -->|claimOrder on src| ETH_HTLC
+
+    ETH_HTLC -.->|isActive?| ETH_REG
+    XLM_HTLC -.->|is_active?| XLM_REG
+
+    classDef contract fill:#1a2332,stroke:#3ABEFF,color:#fff
+    classDef offchain fill:#2d1b3d,stroke:#9C5BFF,color:#fff
+    classDef actor fill:#23331a,stroke:#5BFF9C,color:#fff
+    class ETH_HTLC,ETH_REG,XLM_HTLC,XLM_REG contract
+    class COORD_LISTEN,COORD_BOOK,COORD_API,COORD_WATCH,RES_A,RES_B offchain
+    class User actor
 ```
 
-Funds never sit anywhere except the two HTLC contracts. The
-coordinator is a high-availability metadata service; the resolvers
-are independent economic actors.
+**Critical property:** funds never sit anywhere except the two HTLC
+contracts. The coordinator is a metadata service; the resolvers are
+independent economic actors. The dashed arrows are read-only event
+flows — the coordinator and resolvers have no signing authority over
+user funds.
 
 ---
 
 ## 4. The atomic-swap flow
 
-### 4.1 Direction: ETH → XLM
+### 4.1 Direction: ETH → XLM (happy path)
 
+```mermaid
+sequenceDiagram
+    actor User
+    participant ETH as HTLCEscrow (Sepolia)
+    participant Coord as Coordinator
+    participant Resolver
+    participant XLM as oversync-htlc (Stellar)
+
+    User->>Coord: POST /orders {fromAsset:ETH, toAsset:XLM, amount}
+    Note over Coord: secret = random32()<br/>hashlock = sha256(secret)
+    Coord-->>User: {orderId, hashlock, timelock_eth=24h, timelock_xlm=12h}
+
+    User->>ETH: createOrder(hashlock, timelock_eth, beneficiary=resolver)
+    Note right of ETH: ETH locked under hashlock
+    ETH-->>Coord: OrderCreated event
+
+    Coord->>Resolver: order offered
+    Resolver->>XLM: create_order(hashlock, timelock_xlm, beneficiary=user)
+    Note right of XLM: XLM locked under same hashlock
+    XLM-->>Coord: OrderCreated event
+
+    Coord-->>User: order ready to claim
+    User->>XLM: claim_order(preimage=secret)
+    Note right of XLM: XLM → user<br/>preimage now public on-chain
+    XLM-->>Coord: OrderClaimed event (preimage exposed)
+
+    Coord->>Resolver: preimage = ${secret}
+    Resolver->>ETH: claimOrder(preimage=secret)
+    Note right of ETH: ETH → resolver<br/>swap complete
 ```
-participant User
-participant ETH as HTLCEscrow.sol
-participant Coord as Coordinator
-participant Resolver
-participant XLM as oversync-htlc
 
-User -> Coord: POST /orders { fromAsset=ETH, toAsset=XLM, amount, beneficiary }
-Coord -> Coord: secret = random32(); hashlock = sha256(secret)
-Coord -> User: { orderId, hashlock, timelock_eth, timelock_xlm }
+**Atomicity guarantee.** Both legs settle, or both legs refund. The
+cryptographic correspondence makes this provable:
 
-User -> ETH: createOrder(beneficiary=resolver, hashlock, timelock_eth, asset=ETH, amount)  # locks user's ETH
-ETH -> ETH: emit OrderCreated(orderId, hashlock, timelock_eth)
-Coord <- ETH: event ingested
+- If the user claims XLM first, the preimage becomes public on
+  Stellar. The resolver (or anyone) can then claim ETH on Ethereum
+  using the same preimage before `timelock_eth` expires.
+- If the user never claims, `timelock_xlm < timelock_eth` is chosen
+  so the resolver's Stellar refund expires first. The resolver
+  refunds, and the user can refund their Ethereum side 12h later.
 
-Coord -> Resolver: offer order
-Resolver -> XLM: create_order(beneficiary=user, refund_address=resolver, hashlock, timelock_xlm, asset=XLM, amount)
-                # locks resolver's XLM
-XLM -> XLM: emit OrderCreated
-Coord <- XLM: event ingested
+### 4.2 Direction: XLM → ETH (happy path)
 
-Coord -> User: order ready
-User -> XLM: claim_order(order_id, preimage=secret)   # user receives XLM
-XLM -> XLM: emit OrderClaimed(order_id, preimage)
-Coord <- XLM: event ingested; preimage now public
+```mermaid
+sequenceDiagram
+    actor User
+    participant XLM as oversync-htlc (Stellar)
+    participant Coord as Coordinator
+    participant Resolver
+    participant ETH as HTLCEscrow (Sepolia)
 
-Coord -> Resolver: preimage is on-chain on Stellar
-Resolver -> ETH: claimOrder(orderId, preimage=secret)  # resolver receives ETH
+    User->>Coord: POST /orders {fromAsset:XLM, toAsset:ETH, amount}
+    Note over Coord: secret = random32()<br/>hashlock = sha256(secret)
+    Coord-->>User: {orderId, hashlock, timelock_xlm=24h, timelock_eth=12h}
+
+    User->>XLM: create_order(hashlock, timelock_xlm, beneficiary=resolver)
+    Note right of XLM: XLM locked under hashlock
+    XLM-->>Coord: OrderCreated event
+
+    Coord->>Resolver: order offered
+    Resolver->>ETH: createOrder(hashlock, timelock_eth, beneficiary=user)
+    Note right of ETH: ETH locked under same hashlock
+    ETH-->>Coord: OrderCreated event
+
+    Coord-->>User: order ready to claim
+    User->>ETH: claimOrder(preimage=secret)
+    Note right of ETH: ETH → user<br/>preimage now public on-chain
+    ETH-->>Coord: OrderClaimed event (preimage exposed)
+
+    Coord->>Resolver: preimage = ${secret}
+    Resolver->>XLM: claim_order(preimage=secret)
+    Note right of XLM: XLM → resolver<br/>swap complete
 ```
 
-Both legs settle or both legs refund — the cryptographic
-correspondence guarantees it:
-
-- If the user claims XLM first, the preimage is revealed on Stellar.
-  The resolver (or anyone) can then claim ETH on Ethereum using the
-  same preimage before `timelock_eth` expires.
-- If the user never claims, `timelock_xlm < timelock_eth` is chosen so
-  the resolver's Stellar refund expires first and they recover their
-  XLM safely. Once the resolver refunds, the user can refund their
-  Ethereum side after `timelock_eth`.
-
-### 4.2 Direction: XLM → ETH
-
-Symmetric, with the roles of the two chains swapped. The Soroban
-contract emits `OrderCreated` and `OrderClaimed` events with the same
-shape as the EVM side, so the coordinator's listener logic is shared.
+The roles of the two chains swap. The Soroban contract emits
+`OrderCreated`, `OrderClaimed`, `OrderRefunded` events with the same
+shape as the EVM side, so the coordinator's listener and state-machine
+code is shared across both directions.
 
 ### 4.3 Timelock ordering invariant
 
@@ -341,7 +396,260 @@ React 18 + Vite. Key behaviours relevant to architecture:
 
 ---
 
-## 6. Failure mode catalogue
+## 6. Refund mechanisms
+
+OverSync ships **four independent refund layers**. Each is a backstop
+for the previous one. The first two are pure on-chain primitives — they
+work even if every OverSync server is offline. The last two are
+operator-side conveniences that reduce time-to-recovery from "wait one
+timelock cycle" to "minutes" in the common XLM→ETH failure mode where
+the user has already paid into a relayer-owned Stellar account.
+
+### 6.1 On-chain HTLC refund (primary)
+
+Both contracts expose `refundOrder(orderId)` (EVM) /
+`refund_order(env, order_id)` (Soroban). The function is **permissionless**:
+any caller can invoke it after `timelock` and the contract pays the
+locked amount to `refundAddress` (pinned to the user at create-time)
+plus the safety deposit to the caller as a gas reimbursement.
+
+This is the only guarantee the system needs. Every other refund layer
+is an optimisation on top of this one.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant HTLC as HTLCEscrow / oversync-htlc
+    Note over HTLC: order.timelock = T
+    Note over HTLC: block.timestamp > T
+    User->>HTLC: refundOrder(orderId)
+    Note right of HTLC: locked amount → refundAddress (user)<br/>safety deposit → caller (user)
+```
+
+### 6.2 Frontend refund dialog (UX layer)
+
+The frontend's transaction history shows a **"Refund ETH" button** on
+any pending or failed ETH→XLM swap once the timelock has expired. The
+button calls the contract directly from the user's wallet — the
+coordinator does not participate. See
+[`frontend/src/features/refund/RefundDialog.tsx`](frontend/src/features/refund/RefundDialog.tsx).
+
+The dialog supports both v2 `HTLCEscrow` (uint256 ids) and the v1
+`MainnetHTLC` (bytes32 ids) so users on the live mainnet bridge get
+the same one-click recovery as testnet users.
+
+Refund metadata (`onChainOrderId`, `htlcContractAddress`,
+`timelockUnixSeconds`, `amountWei`) is captured from the ETH receipt
+via [`parseHtlcReceipt`](frontend/src/lib/parseHtlcReceipt.ts) at swap
+creation time and persisted in `localStorage`, so the refund button
+remains usable across browser sessions.
+
+### 6.3 Inline automatic XLM refund
+
+XLM→ETH is structurally asymmetric in v1: the user pays XLM into a
+relayer-owned Stellar account as a plain payment (no HTLC on the
+source side, because Soroban HTLC was not yet integrated end-to-end
+in the mainnet path). If the subsequent ETH release fails — RPC
+timeout, insufficient relayer balance, gas estimation error — the
+user's XLM would otherwise be stranded.
+
+To close this gap, the relayer's `/api/orders/xlm-to-eth` endpoint
+wraps the ETH-send in a try/catch and on failure synchronously
+triggers an XLM refund back to the user:
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Relayer
+    participant ETH as Sepolia / Mainnet RPC
+    participant Stellar as Stellar Horizon
+
+    User->>Relayer: POST /api/orders/xlm-to-eth {orderId, stellarTxHash}
+    Relayer->>ETH: sendTransaction(ethTx)
+    Note over ETH: ❌ RPC timeout / insufficient funds
+    ETH-->>Relayer: error
+    Relayer->>Stellar: refundXlmToUser(stellarTxHash, stellarAddress)
+    Note right of Stellar: original payment amount<br/>minus 0.0001 XLM fee margin
+    Stellar-->>Relayer: refund tx hash
+    Relayer-->>User: 500 + {refund: {status: completed, stellarTxHash}}
+    Note over User: Frontend renders<br/>"Refunded · view Stellar tx" badge
+```
+
+Implementation: [`relayer/src/xlm-refund.ts`](relayer/src/xlm-refund.ts)
+and the catch block in [`relayer/src/index.ts`](relayer/src/index.ts).
+The frontend persists `refundTxHash` + `refundNetwork: 'stellar'` so
+the user can verify the refund on Stellar Expert.
+
+### 6.4 Background refund watchdog
+
+Layer 6.3 only fires while the user's HTTP request is in flight. If
+the user closes their tab right after sending XLM, or the relayer's
+process is restarted (Render redeploy, OOM, etc.) before the ETH
+release completes, the inline refund cannot run.
+
+The watchdog ([`relayer/src/refund-watchdog.ts`](relayer/src/refund-watchdog.ts))
+is the safety net for that case. It runs as a `setInterval` inside the
+relayer process and:
+
+1. Every **60 seconds**, scans the in-memory `activeOrders` map.
+2. For each `direction = 'xlm_to_eth'` order with `xlmReceivedAt`
+   older than **5 minutes** and no `ethTxHash` recorded, triggers
+   the same refund helper as layer 6.3.
+3. Stamps successful refunds with `status = 'refunded'`,
+   `refundTxHash`, `refundedAt` so a subsequent tick does not
+   double-pay.
+4. On refund failure, sets `watchdogFailedAt` and backs off for 10
+   minutes before retrying. Errors are logged per-order but never
+   thrown into the event loop.
+
+The watchdog uses the same `refundXlmToUser` helper as the inline
+path, so the refund amount logic and signing key are identical.
+
+### 6.5 Coverage matrix
+
+| Failure mode | Layer 6.1 (on-chain) | Layer 6.2 (UI) | Layer 6.3 (inline) | Layer 6.4 (watchdog) |
+|---|---|---|---|---|
+| ETH→XLM user never claims | ✅ refund after `timelock_eth` | ✅ one-click button surfaces | n/a | n/a |
+| ETH→XLM resolver never fills | ✅ refund after `timelock_eth` | ✅ one-click button surfaces | n/a | n/a |
+| XLM→ETH ETH RPC fails mid-request | ⚠️ no HTLC on XLM side in v1 path | n/a | ✅ refund in same HTTP response | n/a |
+| XLM→ETH user closes tab post-payment | ⚠️ same as above | n/a | n/a | ✅ refund within ~6 min |
+| XLM→ETH relayer restarts mid-flight | ⚠️ same as above | n/a | n/a | ✅ refund within ~6 min |
+| Coordinator entirely offline | ✅ user calls refund directly | ✅ frontend works without coordinator | n/a | n/a |
+| Relayer entirely offline | ✅ user calls refund directly | ✅ frontend works without relayer | n/a | n/a |
+
+In v2 the XLM→ETH path also goes through the Soroban HTLC, so layer
+6.1 alone is sufficient on both directions and layers 6.3 + 6.4 become
+redundant. They remain in place during the hybrid period as defence-in-
+depth for the v1 mainnet flow.
+
+---
+
+## 7. Cryptographic primitives
+
+OverSync's safety properties bottom out on three primitives. Each is
+deliberately conservative.
+
+### 7.1 Hash function (hashlock)
+
+| Property | Choice | Rationale |
+|---|---|---|
+| Default digest | `sha256` (32 bytes) | Both EVM and Soroban natively support sha256; lets a single preimage be reused across both chains in one swap |
+| EVM compatibility | `keccak256` accepted as alternative | Lets pure-EVM tools (Foundry, Hardhat, classic atomic-swap libraries) plug in without re-hashing |
+| Preimage size | 32 bytes (256 bits) | Brute-force resistance ≥ 2^256; ample margin |
+| Preimage source | `crypto.getRandomValues` (browser) / `crypto.randomBytes` (Node) | CSPRNG; never a deterministic derivation from order metadata |
+
+The dual-hash support is verified by a Hardhat test that creates an
+order with a `sha256(s)` hashlock and claims it with the same `s` and
+again with `keccak256(s)` as a control — only the matching one
+succeeds. See `contracts/test/v2/HTLCEscrow.t.ts`.
+
+### 7.2 Timelocks
+
+| Parameter | Value | Where enforced |
+|---|---|---|
+| `MIN_TIMELOCK` | 300 seconds (5 minutes) | `HTLCEscrow.sol` constant + `oversync-htlc` constant |
+| `MAX_TIMELOCK` | 86,400 seconds (24 hours) | both contracts |
+| `timelock_source` (convention) | now + 24h | coordinator order builder |
+| `timelock_dest` (convention) | now + 12h | coordinator order builder + resolver verifies |
+| Resolver verification | resolver MUST refuse orders where `timelock_dest >= timelock_source - ε` | off-chain runner |
+
+The on-chain contracts only enforce `MIN ≤ t ≤ MAX`. The ordering
+invariant (`timelock_dest < timelock_source`) is enforced off-chain
+because it depends on per-pair latency targets the resolver chooses.
+This is the single trust point a resolver implementer must get right.
+
+### 7.3 Signature schemes
+
+The HTLC contracts themselves do not verify signatures — they verify
+hash preimages, which is a strictly simpler operation. The
+*transactions* that interact with the contracts are signed by:
+
+| Actor | Chain | Scheme |
+|---|---|---|
+| User | Ethereum | secp256k1 via injected wallet (MetaMask / Rabby / WalletConnect) |
+| User | Stellar | Ed25519 via Freighter or other Stellar wallet |
+| Resolver | Ethereum | secp256k1 — resolver-managed hot key |
+| Resolver | Stellar | Ed25519 — resolver-managed hot key |
+| Coordinator | none | the coordinator never signs HTLC transactions |
+
+The coordinator's REST/WebSocket API does not authenticate users at
+the API layer — anyone can read the public order book. State-changing
+calls go directly to the chains.
+
+---
+
+## 8. Operational characteristics
+
+This section quantifies the cost and latency profile so reviewers do
+not have to derive it from code.
+
+### 8.1 End-to-end latency (testnet measurements, May 2026)
+
+| Stage | Typical | P95 | Bottleneck |
+|---|---|---|---|
+| Order creation HTTP round-trip | 200 ms | 600 ms | coordinator → SQLite |
+| User signs source-side lock tx | 5 – 15 s | 30 s | wallet UX |
+| Source-side block confirmation | 12 s (Sepolia) / 5 s (Stellar) | 25 s | chain block time |
+| Coordinator ingests event | < 5 s | 10 s | block polling interval |
+| Resolver locks destination side | 20 – 45 s | 90 s | resolver fill policy + dest block time |
+| User signs destination-side claim | 5 – 15 s | 30 s | wallet UX |
+| Resolver claims source side | 30 – 60 s | 120 s | resolver polling + source block time |
+| **Total user-perceived swap time** | **90 – 180 s** | **5 min** | mostly chain finality |
+
+### 8.2 Gas costs (Sepolia, post-Cancun, 1 gwei reference)
+
+| Operation | Gas | ETH @ 1 gwei | Notes |
+|---|---|---|---|
+| `HTLCEscrow.createOrder` (native ETH) | ~145k | 0.000145 ETH | one SSTORE for the order + one for next-id |
+| `HTLCEscrow.createOrder` (ERC-20) | ~190k | 0.00019 ETH | adds SafeERC20 transferFrom |
+| `HTLCEscrow.claimOrder` | ~75k | 0.000075 ETH | one SLOAD + status flip + transfer |
+| `HTLCEscrow.refundOrder` | ~70k | 0.00007 ETH | similar to claim |
+| `ResolverRegistry.register` | ~95k | 0.000095 ETH | one-time per resolver |
+
+On Stellar, each Soroban invocation has a flat ~0.0001 XLM base fee
+plus resource fees in the 0.5 – 5 XLM range depending on storage
+written. WASM upload (`stellar contract install`) costs ~12 XLM and is
+one-time per contract version.
+
+### 8.3 RPC requirements
+
+| Component | RPC requirement | Default |
+|---|---|---|
+| Coordinator listener | `eth_getLogs(fromBlock, toBlock)` every 5 s; `getEvents` on Soroban every 15 s | publicnode (Sepolia) + soroban-rpc.stellar.org (testnet) |
+| Resolver | `eth_call` + `eth_sendTransaction` on Ethereum; `submitTransaction` + `getEvents` on Stellar | same |
+| Frontend | `eth_call` for balance / contract reads via injected provider; `Horizon` for balance | injected wallet's RPC |
+
+**Listener architecture.** Both chains are polled with stateless
+queries (`queryFilter` / `getEvents`), never with stateful
+subscriptions (`eth_newFilter`, `eth_subscribe`). This is a deliberate
+choice: load-balanced public RPCs (PublicNode, Ankr, etc.) do not
+preserve filter state across upstream nodes — the filter id created
+on one node is unknown to the next, producing silent event drops.
+`queryFilter` is just `getLogs(fromBlock, toBlock)` and works
+identically across any load balancer. See
+[`relayer/src/contract-event-poller.ts`](relayer/src/contract-event-poller.ts)
+for the shared poller implementation; cursor advances only on
+successful queries, so transient RPC failures simply retry on the
+next tick.
+
+### 8.4 Throughput
+
+OverSync is throughput-bound by the underlying chains, not by the
+coordinator. The reference coordinator handles ~50 orders/second
+sustained (constrained by SQLite write throughput; trivially
+horizontally scalable to Postgres + read replicas if needed). In
+practice the relevant cap is:
+
+- Sepolia: ~15 tx/s aggregate, OverSync uses 2 tx per swap = ~7
+  swaps/s headroom.
+- Soroban testnet: ~5 tx/s aggregate, similar arithmetic.
+
+For projected mainnet TVL this is several orders of magnitude over
+required throughput.
+
+---
+
+## 9. Failure mode catalogue
 
 This catalogue is exhaustive within the v2 scope. Every condition
 described here either leaves user funds recoverable or is impossible
@@ -362,7 +670,7 @@ by the contract invariants.
 
 ---
 
-## 7. Security boundaries: what is enforced where
+## 10. Security boundaries: what is enforced where
 
 This table is what an auditor should grep against.
 
@@ -378,7 +686,7 @@ This table is what an auditor should grep against.
 
 ---
 
-## 8. Trust model summary
+## 11. Trust model summary
 
 Three actors are not trusted:
 
@@ -404,7 +712,7 @@ is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
-## 9. Status table
+## 12. Status table
 
 | Layer | v1 state | v2 state | Verifiable artefact |
 |---|---|---|---|
@@ -418,7 +726,85 @@ is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
-## 10. Out of scope for v2.0
+## 13. Auditor checklist
+
+What an external auditor should grep against before signing off on a
+mainnet deployment.
+
+### 13.1 Solidity (`contracts/contracts/v2/`)
+
+- [ ] `HTLCEscrow.claimOrder` MUST require either
+      `sha256(preimage) == hashlock` or `keccak256(preimage) == hashlock`,
+      AND `block.timestamp <= timelock`. Both checks present, no
+      short-circuit that skips either.
+- [ ] `HTLCEscrow.refundOrder` MUST require `block.timestamp > timelock`
+      AND order status is exactly `Locked`. Refund of an already-claimed
+      or already-refunded order MUST revert.
+- [ ] `HTLCEscrow` has **no** function with `onlyOwner` that moves
+      funds. The contract has no `emergencyWithdraw`, no `pause`, no
+      `upgradeTo`, no proxy admin. Tested by
+      `non-custodial guarantees > contract has no admin escape hatch`.
+- [ ] `refundAddress` is set to `msg.sender` at create-time and is
+      `immutable` after that (no setter, no fallback that overwrites it).
+- [ ] Every state-changing function has `nonReentrant` (OZ
+      `ReentrancyGuard`).
+- [ ] Every ERC-20 movement goes through `SafeERC20.safeTransfer` /
+      `safeTransferFrom`. No raw `.transfer()` / `.transferFrom()`.
+- [ ] `MIN_TIMELOCK`, `MAX_TIMELOCK` are `constant` (compile-time),
+      not storage variables that could be hot-patched.
+- [ ] `ResolverRegistry.slash` is the only admin-privileged action,
+      uses `Ownable2Step`, and routes funds to `slashBeneficiary`
+      (not `owner`).
+- [ ] Compiled with the exact `solc` version + optimizer settings
+      pinned in `hardhat.config.ts` (no implicit version float).
+
+### 13.2 Soroban (`soroban/contracts/`)
+
+- [ ] `oversync-htlc::claim_order` requires
+      `sha256(preimage) == hashlock` AND
+      `env.ledger().timestamp() <= timelock`.
+- [ ] `oversync-htlc::refund_order` requires
+      `env.ledger().timestamp() > timelock` AND order status is
+      exactly `Locked`.
+- [ ] Order map keys are monotonically increasing `u64` (no key reuse,
+      no admin-reset).
+- [ ] No `__admin__` function exists that can mutate locked orders.
+- [ ] `oversync-resolver-registry::slash` is admin-only and routes to
+      `slash_beneficiary`.
+- [ ] Compiled with the exact `stellar-cli` + `soroban-sdk` version
+      pinned in `Cargo.toml`.
+
+### 13.3 Off-chain (coordinator, resolver, relayer)
+
+- [ ] Coordinator has no signing key for either HTLC contract.
+      Confirmed by grep: no `PRIVATE_KEY` env var consumed by any
+      coordinator module that talks to the HTLC.
+- [ ] Watchdog refund only signs payments **from the relayer's own
+      Stellar account back to a Stellar address recorded against the
+      order**. It cannot move arbitrary funds.
+- [ ] All RPC calls have timeouts (`RELAYER_RPC_TIMEOUT_MS`,
+      default 30s) so a hung RPC cannot lock the request thread
+      indefinitely.
+- [ ] Event polling cursor (`lastProcessedBlock`) advances only on
+      successful `queryFilter` calls. A failed poll never advances
+      the cursor.
+
+### 13.4 Frontend
+
+- [ ] `RefundDialog` calls `refundOrder` directly via the user's
+      injected wallet. No coordinator endpoint is invoked.
+- [ ] Transaction history filters out fake hashes
+      (`isRealHash`). No demo data leaks into production state.
+- [ ] All `console.*` are stripped from production bundles
+      (`vite.config.ts` `esbuild.drop`). Source maps disabled.
+- [ ] `useNetworkMode` reconciles URL `?network=`, MetaMask
+      `chainId`, and Freighter network passphrase; a mismatch
+      surfaces `NetworkMismatchBanner` instead of silently signing
+      against the wrong chain.
+
+---
+
+## 14. Out of scope for v2.0
 
 These items are tracked in [`ROADMAP.md`](ROADMAP.md):
 

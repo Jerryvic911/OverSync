@@ -18,13 +18,16 @@ interface Transaction {
   ethTxHash?: string;
   stellarTxHash?: string;
   direction: 'eth-to-xlm' | 'xlm-to-eth';
-  // Refund support (eth-to-xlm only; populated when ETH is locked on-chain)
+  // Refund support
+  // ETH-side refund metadata (eth-to-xlm; populated when ETH is locked on-chain)
   onChainOrderId?: string;       // bytes32 hex (v1) or uint256 string (v2)
   htlcContractAddress?: string;  // contract holding the locked ETH
   htlcContractMode?: 'v1-mainnet-htlc' | 'v2-escrow';
   timelockUnixSeconds?: number;
   amountWei?: string;
+  // Generic refund tracking (works for both directions)
   refundTxHash?: string;
+  refundNetwork?: 'ethereum' | 'stellar';  // which chain the refund lives on
   refundedAt?: number;
   networkMode?: 'mainnet' | 'testnet';
 }
@@ -171,6 +174,29 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
     const network = isTestnet() ? 'testnet' : 'public';
     return `https://stellar.expert/explorer/${network}/tx/${txHash}`;
   };
+
+  /**
+   * Pick the right block explorer for a refund tx.
+   *
+   * `refundNetwork` is the authoritative signal once we start writing it.
+   * For legacy entries that don't have it, we fall back to a hash-shape
+   * heuristic: Ethereum hashes are 0x-prefixed, Stellar hashes are not.
+   */
+  const getRefundNetwork = (tx: Transaction): 'ethereum' | 'stellar' => {
+    if (tx.refundNetwork) return tx.refundNetwork;
+    if (tx.refundTxHash?.startsWith('0x')) return 'ethereum';
+    return 'stellar';
+  };
+
+  const getRefundExplorerUrl = (tx: Transaction): string => {
+    if (!tx.refundTxHash) return '#';
+    return getRefundNetwork(tx) === 'ethereum'
+      ? getEtherscanUrl(tx.refundTxHash)
+      : getStellarExplorerUrl(tx.refundTxHash);
+  };
+
+  const getRefundNetworkLabel = (tx: Transaction): string =>
+    getRefundNetwork(tx) === 'ethereum' ? 'Ethereum' : 'Stellar';
 
   /**
    * A pending ETH→XLM swap is "refundable" once we have all three on-chain
@@ -324,36 +350,37 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
                 </div>
               </div>
 
-              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-2">
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-2 flex-wrap">
                 <div className="text-xs text-gray-400">
                   Transaction:
                   <span className="text-gray-300 font-mono ml-1">
                     {tx.txHash.substring(0, 10)}...{tx.txHash.substring(tx.txHash.length - 8)}
                   </span>
-                  {tx.refundedAt && tx.refundTxHash && (
-                    <span className="ml-3 text-emerald-400">
-                      Refunded ·
-                      <a
-                        href={getEtherscanUrl(tx.refundTxHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-1 underline"
-                      >
-                        view tx
-                      </a>
-                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {tx.refundTxHash && (
+                    <a
+                      href={getRefundExplorerUrl(tx)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-semibold border border-emerald-400/30 transition-colors"
+                      title={`Refund settled on ${getRefundNetworkLabel(tx)}. Click to view the refund transaction.`}
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      Refunded · view {getRefundNetworkLabel(tx)} tx
+                    </a>
+                  )}
+                  {canRefund(tx) && (
+                    <button
+                      onClick={() => setRefundTarget(tx)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-semibold border border-amber-400/30 transition-colors"
+                      title="Refund your locked ETH from the HTLC contract once the timelock expires"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                      Refund ETH
+                    </button>
                   )}
                 </div>
-                {canRefund(tx) && (
-                  <button
-                    onClick={() => setRefundTarget(tx)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-semibold border border-amber-400/30 transition-colors"
-                    title="Refund your locked ETH from the HTLC contract once the timelock expires"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    Refund ETH
-                  </button>
-                )}
               </div>
             </div>
           ))

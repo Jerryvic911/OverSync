@@ -974,11 +974,14 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
               // Check if automatic refund was processed by backend
               if (parsedError?.refund?.status === 'completed') {
                 console.log('✅ Automatic refund completed:', parsedError.refund.stellarTxHash);
-                
-                // Update transaction to show refund
+
+                // Persist refund metadata so TransactionHistory can render a
+                // "Refunded · view Stellar tx" link. We keep status=cancelled
+                // (the swap didn't go through) but make the refund discoverable.
                 updateTransactionStatus(result.orderId, 'cancelled', {
-                  stellarTxHash: parsedError.refund.stellarTxHash,
-                  refundedAt: Date.now()
+                  refundTxHash: parsedError.refund.stellarTxHash,
+                  refundNetwork: 'stellar',
+                  refundedAt: Date.now(),
                 });
                 
                 setStatusMessage('Refunded ↩️');

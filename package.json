@@ -8,7 +8,10 @@
     "contracts",
     "stellar",
     "relayer",
-    "frontend"
+    "frontend",
+    "resolver",
+    "coordinator",
+    "packages/*"
   ],
   "packageManager": "pnpm@8.15.0",
   "scripts": {

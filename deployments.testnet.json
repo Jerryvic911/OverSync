@@ -23,10 +23,16 @@
     "deployer": "GC4VWBK5QSJCBSRWIZJYWCF2SJAPCKU3OFHH4XK7ZBTZ5HCK7VYLU6FL",
     "deployTransactions": {
       "HTLC": "f7583c2cca3ca542a4754677e98f1ce9c4e1fa93ebe534ed094110b0e58201d7",
-      "ResolverRegistry": "1532a403acc488b651692b6d26fd393535014176b6905909e8d133cf475875d7"
+      "ResolverRegistry": "1532a403acc488b651692b6d26fd393535014176b6905909e8d133cf475875d7",
+      "ResolverRegistryInitialize": "e5e353b6d6b2b6f6e6a88661c199418551508acf558d1799f0d1e184aa23d535"
     },
-    "notes": {
-      "ResolverRegistry": "Deployed but NOT initialized. Call initialize(admin, stake_asset, min_stake, slash_beneficiary) before use."
+    "resolverRegistryConfig": {
+      "admin": "GC4VWBK5QSJCBSRWIZJYWCF2SJAPCKU3OFHH4XK7ZBTZ5HCK7VYLU6FL",
+      "stakeAsset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "stakeAssetName": "native XLM SAC",
+      "minStake": "1000000000",
+      "minStakeXLM": "100",
+      "slashBeneficiary": "GC4VWBK5QSJCBSRWIZJYWCF2SJAPCKU3OFHH4XK7ZBTZ5HCK7VYLU6FL"
     }
   }
 }

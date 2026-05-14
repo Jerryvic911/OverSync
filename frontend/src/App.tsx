@@ -435,7 +435,7 @@ function App() {
           rel="noopener noreferrer"
           className="flex items-center gap-2 text-sm font-semibold text-slate-300 transition-colors hover:text-cyan-200"
         >
-          Created by Kaptan_web3
+          Created by Kaptan
           <span className="text-base">X</span>
         </a>
       </div>

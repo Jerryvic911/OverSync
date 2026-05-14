@@ -264,7 +264,7 @@ export const RELAYER_CONFIG = {
   // Ethereum configuration
   ethereum: {
     network: process.env.ETHEREUM_NETWORK || 'mainnet',
-    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_MAINNET_API_KEY_HERE',
+    rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com',
     // ✅ Dynamic contract addresses based on network
     contractAddress: getHtlcBridgeAddress(DEFAULT_NETWORK_MODE), // For EthereumEventListener (testnet only)
     escrowFactoryAddress: getEscrowFactoryAddress(DEFAULT_NETWORK_MODE), // For transactions (mainnet + testnet)
@@ -1151,8 +1151,8 @@ const activeOrders = new Map();
           // ✅ NETWORK-AWARE: Detect if this order was created for testnet
           const orderNetworkMode = storedOrder.networkMode || 'mainnet'; // Check stored network
           const rpcUrl = orderNetworkMode === 'testnet' 
-            ? (process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/YOUR_SEPOLIA_API_KEY_HERE')
-            : (process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_MAINNET_API_KEY_HERE');
+            ? (process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com')
+            : (process.env.ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com');
           const privateKey = process.env.RELAYER_PRIVATE_KEY;
           
           console.log(`🌐 XLM→ETH Network Detection: ${orderNetworkMode.toUpperCase()}`);
@@ -1602,8 +1602,8 @@ const activeOrders = new Map();
         // ✅ NETWORK-AWARE: Use request network first, fallback to stored order
         const orderNetworkMode = requestNetwork || storedOrder?.networkMode || 'mainnet';
         const rpcUrl = orderNetworkMode === 'testnet' 
-          ? (process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/YOUR_SEPOLIA_API_KEY_HERE')
-          : (process.env.ETHEREUM_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/YOUR_MAINNET_API_KEY_HERE');
+          ? (process.env.SEPOLIA_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com')
+          : (process.env.ETHEREUM_RPC_URL || 'https://ethereum-rpc.publicnode.com');
         const privateKey = process.env.RELAYER_PRIVATE_KEY;
         
         console.log(`🌐 XLM→ETH Network Detection (2nd endpoint): ${orderNetworkMode.toUpperCase()}`);

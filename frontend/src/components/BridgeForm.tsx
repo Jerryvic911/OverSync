@@ -379,7 +379,7 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
             const networkConfig = networkInfo.isTestnet ? {
                 chainId: SEPOLIA_CHAIN_ID,
                 chainName: 'Sepolia Testnet',
-                rpcUrls: ['https://sepolia.infura.io/v3/'],
+                rpcUrls: ['https://ethereum-sepolia-rpc.publicnode.com'],
                 blockExplorerUrls: ['https://sepolia.etherscan.io'],
                 nativeCurrency: {
                   name: 'SepoliaETH',
@@ -389,7 +389,7 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
             } : {
               chainId: MAINNET_CHAIN_ID,
               chainName: 'Ethereum Mainnet',
-              rpcUrls: ['https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY_HERE'],
+              rpcUrls: ['https://ethereum-rpc.publicnode.com'],
               blockExplorerUrls: ['https://etherscan.io'],
               nativeCurrency: {
                 name: 'Ether',

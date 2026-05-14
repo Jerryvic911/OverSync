@@ -25,7 +25,7 @@ At minimum, set:
 
 ```
 NETWORK_MODE=testnet
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<key>
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 ETHERSCAN_API_KEY=<key>
 ```

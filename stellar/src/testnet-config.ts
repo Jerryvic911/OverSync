@@ -45,7 +45,7 @@ export const STELLAR_TESTNET_CONFIG = {
 export const ETHEREUM_SEPOLIA_CONFIG = {
   chainId: 11155111,
   networkName: 'sepolia',
-  rpcUrl: 'https://sepolia.infura.io/v3/your-project-id',
+  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
   
   // Contract addresses (to be updated after deployment)
   contracts: {

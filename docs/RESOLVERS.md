@@ -46,7 +46,7 @@ Set at least these variables:
 
 ```
 NETWORK_MODE=testnet
-SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<key>
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 ETH_HTLC_ESCROW_TESTNET=<from deployments.testnet.json>
 ETH_RESOLVER_REGISTRY_TESTNET=<from deployments.testnet.json>

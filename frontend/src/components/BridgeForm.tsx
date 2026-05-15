@@ -1308,7 +1308,7 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
                   )}
                   {priceSource === 'fallback' && (
                     <span
-                      className="text-[10px] uppercase tracking-wide text-amber-300"
+                      className="text-[10px] uppercase tracking-wide text-indigo-200"
                       title="The relayer price feed is unreachable; this is a hardcoded estimate."
                     >
                       fallback
@@ -1342,7 +1342,7 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
                 </div>
               )}
               {priceSource === 'fallback' && (
-                <div className="text-amber-300/80 text-[11px] mt-1">
+                <div className="mt-1 text-[11px] text-indigo-200/80">
                   Live price feed unreachable. Final swap amount will use the relayer's price at execution time and may differ.
                 </div>
               )}

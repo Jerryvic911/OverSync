@@ -40,10 +40,9 @@ body {
 body {
   min-height: 100vh;
   background:
-    linear-gradient(118deg, rgba(45, 91, 255, 0.2) 0 18%, transparent 34%),
-    linear-gradient(236deg, rgba(0, 226, 255, 0.16) 0 15%, transparent 32%),
-    linear-gradient(308deg, rgba(255, 184, 77, 0.14) 0 13%, transparent 30%),
-    linear-gradient(180deg, #070a18 0%, #03040a 48%, #05050b 100%);
+    linear-gradient(118deg, rgba(67, 97, 238, 0.16) 0 18%, transparent 34%),
+    linear-gradient(236deg, rgba(124, 140, 255, 0.11) 0 15%, transparent 34%),
+    linear-gradient(180deg, #070a18 0%, #03040a 52%, #05050b 100%);
   background-attachment: fixed;
   background-size: cover;
 }
@@ -65,11 +64,10 @@ body::selection {
   z-index: -20;
   pointer-events: none;
   background:
-    linear-gradient(112deg, transparent 0 15%, rgba(67, 97, 238, 0.3) 20%, transparent 35%),
-    linear-gradient(66deg, transparent 0 45%, rgba(255, 184, 77, 0.14) 51%, transparent 64%),
-    linear-gradient(153deg, transparent 0 58%, rgba(255, 43, 138, 0.18) 64%, transparent 78%);
-  opacity: 0.82;
-  filter: saturate(1.2);
+    linear-gradient(112deg, transparent 0 15%, rgba(67, 97, 238, 0.22) 20%, transparent 36%),
+    linear-gradient(153deg, transparent 0 58%, rgba(124, 58, 237, 0.12) 64%, transparent 79%);
+  opacity: 0.76;
+  filter: saturate(1.04);
 }
 
 .background-depth {
@@ -149,11 +147,10 @@ input[type=number] {
   padding: 2px;
   background: linear-gradient(
     300deg,
-    #3a5bff,
-    #00e2ff,
-    #ffb84d,
-    #ff2b8a,
-    #3a5bff
+    #3f5cff,
+    #7c8cff,
+    #5b6fff,
+    #3f5cff
   );
   background-size: 300% 300%;
   animation: border-flow 8s linear infinite;
@@ -213,7 +210,7 @@ input[type=number] {
   inset: 0;
   border-radius: 16px;
   padding: 1px;
-  background: linear-gradient(to right, #3a5bff, #00e2ff, #ffb84d);
+  background: linear-gradient(to right, #3f5cff, #7c8cff);
   -webkit-mask: 
     linear-gradient(#fff 0 0) content-box, 
     linear-gradient(#fff 0 0);
@@ -227,7 +224,7 @@ input[type=number] {
 
 /* New custom classes for the updated design */
 .page-title-gradient {
-  background: linear-gradient(90deg, #f8fbff 0%, #72e2ff 24%, #8b5cf6 52%, #ffb84d 82%, #ff4fa3 100%);
+  background: linear-gradient(90deg, #eef2ff 0%, #8ea0ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -235,7 +232,7 @@ input[type=number] {
 }
 
 .hero-gradient {
-  background: linear-gradient(90deg, #72e2ff 0%, #a78bfa 34%, #ffb84d 68%, #ff4fa3 100%);
+  background: #8ea0ff;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -257,7 +254,7 @@ input[type=number] {
   inset: 0;
   border-radius: 1.25rem;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(114, 226, 255, 0.62), rgba(139, 92, 246, 0.28), rgba(255, 184, 77, 0.36), rgba(255, 79, 163, 0.42));
+  background: linear-gradient(135deg, rgba(126, 147, 255, 0.5), rgba(67, 97, 238, 0.26), rgba(255, 255, 255, 0.12));
   -webkit-mask: 
     linear-gradient(#fff 0 0) content-box, 
     linear-gradient(#fff 0 0);
@@ -278,18 +275,18 @@ input[type=number] {
 }
 
 .brand-cta {
-  color: #02040a;
-  background: linear-gradient(90deg, #72e2ff 0%, #8b5cf6 44%, #ffb84d 100%);
+  color: #ffffff;
+  background: linear-gradient(90deg, #3f5cff 0%, #6f7dff 100%);
   box-shadow:
-    0 18px 44px rgba(0, 226, 255, 0.2),
-    0 12px 36px rgba(139, 92, 246, 0.2);
+    0 18px 44px rgba(63, 92, 255, 0.24),
+    0 12px 36px rgba(0, 0, 0, 0.18);
 }
 
 .brand-cta:hover {
   box-shadow:
-    0 22px 58px rgba(0, 226, 255, 0.28),
-    0 16px 48px rgba(255, 184, 77, 0.2);
-  filter: saturate(1.08) brightness(1.04);
+    0 22px 58px rgba(63, 92, 255, 0.3),
+    0 16px 48px rgba(0, 0, 0, 0.22);
+  filter: saturate(1.02) brightness(1.04);
 }
 
 .button-hover-scale:hover {
@@ -313,9 +310,9 @@ input[type=number] {
 }
 
 .network-testnet {
-  background-color: rgba(255, 184, 77, 0.15);
-  color: #ffe3ad;
-  border-color: rgba(255, 184, 77, 0.42);
+  background-color: rgba(124, 140, 255, 0.14);
+  color: #dbe2ff;
+  border-color: rgba(142, 160, 255, 0.36);
 }
 
 .network-connected {
@@ -359,9 +356,9 @@ input[type=number] {
 }
 
 .segmented-control button.active {
-  color: #02040a;
-  background: linear-gradient(90deg, #72e2ff, #8b5cf6 52%, #ffb84d);
-  box-shadow: 0 14px 34px rgba(0, 226, 255, 0.22);
+  color: white;
+  background: linear-gradient(90deg, #3f5cff, #6f7dff);
+  box-shadow: 0 14px 34px rgba(63, 92, 255, 0.24);
 }
 
 .metric-tile {
@@ -437,9 +434,8 @@ input[type=number] {
   display: grid;
   place-items: center;
   background:
-    linear-gradient(115deg, transparent 0 18%, rgba(0, 226, 255, 0.18) 25%, transparent 39%),
-    linear-gradient(242deg, transparent 0 24%, rgba(255, 184, 77, 0.16) 31%, transparent 47%),
-    linear-gradient(145deg, #02030a 0%, #070918 38%, #130817 68%, #030306 100%);
+    linear-gradient(115deg, transparent 0 18%, rgba(67, 97, 238, 0.2) 25%, transparent 39%),
+    linear-gradient(145deg, #02030a 0%, #070918 42%, #0d1028 72%, #030306 100%);
   animation: intro-screen-out 0.5s ease 2.35s forwards;
 }
 
@@ -509,7 +505,7 @@ input[type=number] {
 .intro-copy span {
   display: block;
   margin-top: 0.2rem;
-  color: rgba(255, 184, 77, 0.82);
+  color: rgba(142, 160, 255, 0.82);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.42em;
@@ -533,7 +529,7 @@ input[type=number] {
   left: 0;
   width: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #72e2ff, #8b5cf6, #ffb84d, #ff4fa3);
+  background: linear-gradient(90deg, #8ea0ff, #3f5cff);
   transform-origin: left center;
   animation: intro-loader-fill 2.15s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }

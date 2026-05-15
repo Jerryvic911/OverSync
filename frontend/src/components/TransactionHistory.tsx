@@ -461,7 +461,7 @@ export default function TransactionHistory({ ethAddress, stellarAddress }: Trans
                   {canRefund(tx) && (
                     <button
                       onClick={() => setRefundTarget(tx)}
-                      className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25"
+                      className="flex items-center gap-1.5 rounded-full border border-indigo-300/30 bg-indigo-400/15 px-3 py-1.5 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-400/25"
                       title="Refund your locked ETH from the HTLC contract once the timelock expires"
                     >
                       <Undo2 className="h-3.5 w-3.5" />

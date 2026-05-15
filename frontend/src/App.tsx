@@ -209,7 +209,7 @@ function App() {
           />
           <div>
             <span className="block text-lg font-semibold tracking-tight text-white">OverSync</span>
-            <span className="hidden text-xs uppercase tracking-[0.32em] text-amber-200/75 sm:block">Fusion Rail</span>
+            <span className="hidden text-xs uppercase tracking-[0.32em] text-indigo-200/75 sm:block">Fusion Rail</span>
           </div>
         </div>
         
@@ -231,7 +231,7 @@ function App() {
             }`}
           >
             <div className={`w-2 h-2 rounded-full ${
-              currentNetwork === 'mainnet' ? 'bg-cyan-300 shadow-[0_0_16px_rgba(0,226,255,0.65)]' : 'bg-amber-300 shadow-[0_0_16px_rgba(255,184,77,0.55)]'
+              currentNetwork === 'mainnet' ? 'bg-cyan-300 shadow-[0_0_16px_rgba(0,226,255,0.65)]' : 'bg-indigo-300 shadow-[0_0_16px_rgba(124,140,255,0.48)]'
             }`}></div>
             {currentNetwork === 'mainnet' ? 'Mainnet' : 'Testnet'}
           </button>
@@ -398,7 +398,7 @@ function App() {
                 <p className="text-xs uppercase tracking-[0.24em] text-cyan-100/55">Active route</p>
                 <h2 className="mt-1 text-lg font-semibold text-white">ETH / XLM liquidity lane</h2>
               </div>
-              <Zap className="h-5 w-5 text-amber-200 drop-shadow-[0_0_12px_rgba(255,184,77,0.45)]" />
+              <Zap className="h-5 w-5 text-indigo-200 drop-shadow-[0_0_12px_rgba(124,140,255,0.34)]" />
             </div>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-4">
               <div className="chain-node">

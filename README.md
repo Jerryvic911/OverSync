@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/images/oversync-logo.png" alt="OverSync" width="140" />
+  <img src="frontend/public/images/oversync-logo.png" alt="OverSync" width="240" />
 </p>
 
 # OverSync

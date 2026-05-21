@@ -42,7 +42,7 @@ interface TransactionHistoryProps {
 }
 
 const STORAGE_KEY = 'oversync_transactions_v2';
-const RENDER_API_BASE_URL = 'https://oversync-1nchfusion-2.onrender.com';
+const RENDER_API_BASE_URL = 'https://oversync.onrender.com';
 const API_BASE_URL = import.meta.env.PROD
   ? ''
   : (import.meta as any).env?.VITE_API_BASE_URL || RENDER_API_BASE_URL;

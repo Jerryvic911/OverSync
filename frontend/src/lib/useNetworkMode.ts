@@ -14,6 +14,27 @@ const MAINNET_RPC_URL =
   (import.meta as any).env?.VITE_MAINNET_RPC_URL ||
   'https://eth.llamarpc.com';
 
+const SEPOLIA_RPC_URL =
+  (import.meta as any).env?.VITE_SEPOLIA_RPC_URL ||
+  'https://ethereum-sepolia-rpc.publicnode.com';
+
+/** Normalize eth_chainId responses (0xaa36a7 vs 11155111 vs mixed case). */
+function normalizeChainId(chainId: string | null): string | null {
+  if (!chainId) return null;
+  const trimmed = chainId.trim();
+  try {
+    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+      return `0x${BigInt(trimmed).toString(16)}`;
+    }
+    if (/^\d+$/.test(trimmed)) {
+      return `0x${BigInt(trimmed).toString(16)}`;
+    }
+  } catch {
+    return trimmed.toLowerCase();
+  }
+  return trimmed.toLowerCase();
+}
+
 function readModeFromUrl(): NetworkMode {
   if (typeof window === 'undefined') {
     return 'testnet';
@@ -34,8 +55,10 @@ function expectedStellarPassphrase(mode: NetworkMode): string {
 }
 
 function eqHexChainId(a: string | null, b: string): boolean {
-  if (!a) return false;
-  return a.toLowerCase() === b.toLowerCase();
+  const left = normalizeChainId(a);
+  const right = normalizeChainId(b);
+  if (!left || !right) return false;
+  return left === right;
 }
 
 export interface NetworkModeState {
@@ -54,6 +77,8 @@ export interface NetworkModeState {
   hasAnyMismatch: boolean;
 
   setMode: (next: NetworkMode) => Promise<{ ok: boolean; reason?: string }>;
+  /** Ask connected wallets to match the current app mode (even if mode unchanged). */
+  syncWalletsToAppMode: () => Promise<{ ok: boolean; reason?: string }>;
   refreshWalletNetworks: () => void;
 }
 
@@ -107,7 +132,7 @@ export function useNetworkMode(opts: {
     }
     try {
       const chainId = (await window.ethereum.request({ method: 'eth_chainId' })) as string;
-      setMetamaskChainId(chainId);
+      setMetamaskChainId(normalizeChainId(chainId));
     } catch {
       setMetamaskChainId(null);
     }
@@ -145,7 +170,7 @@ export function useNetworkMode(opts: {
       return;
     }
     const eth = window.ethereum as any;
-    const onChainChanged = (next: string) => setMetamaskChainId(next);
+    const onChainChanged = (next: string) => setMetamaskChainId(normalizeChainId(next));
     if (typeof eth.on === 'function') {
       eth.on('chainChanged', onChainChanged);
     }
@@ -155,6 +180,16 @@ export function useNetworkMode(opts: {
       }
     };
   }, [refreshMetamask]);
+
+  // Re-read chain when MetaMask connects; poll while connected (some wallets omit chainChanged).
+  useEffect(() => {
+    if (!metamaskConnected) {
+      return;
+    }
+    refreshMetamask();
+    const id = window.setInterval(refreshMetamask, 4000);
+    return () => window.clearInterval(id);
+  }, [metamaskConnected, refreshMetamask]);
 
   useEffect(() => {
     refreshFreighter();
@@ -181,20 +216,35 @@ export function useNetworkMode(opts: {
       });
       return { ok: true };
     } catch (err: any) {
-      if (err?.code === 4902 && next === 'mainnet') {
+      if (err?.code === 4902) {
         try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: target,
-                chainName: 'Ethereum Mainnet',
-                rpcUrls: [MAINNET_RPC_URL],
-                blockExplorerUrls: ['https://etherscan.io'],
-                nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-              },
-            ],
-          });
+          if (next === 'mainnet') {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId: target,
+                  chainName: 'Ethereum Mainnet',
+                  rpcUrls: [MAINNET_RPC_URL],
+                  blockExplorerUrls: ['https://etherscan.io'],
+                  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                },
+              ],
+            });
+          } else {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId: target,
+                  chainName: 'Sepolia Testnet',
+                  rpcUrls: [SEPOLIA_RPC_URL],
+                  blockExplorerUrls: ['https://sepolia.etherscan.io'],
+                  nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
+                },
+              ],
+            });
+          }
           return { ok: true };
         } catch {
           return { ok: false, reason: 'metamask-add-failed' };
@@ -206,6 +256,18 @@ export function useNetworkMode(opts: {
       return { ok: false, reason: 'metamask-switch-failed' };
     }
   };
+
+  const syncWalletsToAppMode = useCallback(async (): Promise<{ ok: boolean; reason?: string }> => {
+    if (metamaskConnected) {
+      const result = await switchMetamaskChain(mode);
+      if (!result.ok) {
+        return result;
+      }
+    }
+    await refreshMetamask();
+    await refreshFreighter();
+    return { ok: true };
+  }, [mode, metamaskConnected, refreshMetamask, refreshFreighter]);
 
   const setMode = useCallback(
     async (next: NetworkMode): Promise<{ ok: boolean; reason?: string }> => {
@@ -260,6 +322,7 @@ export function useNetworkMode(opts: {
     freighterMatches,
     hasAnyMismatch: !metamaskMatches || !freighterMatches,
     setMode,
+    syncWalletsToAppMode,
     refreshWalletNetworks,
   };
 }

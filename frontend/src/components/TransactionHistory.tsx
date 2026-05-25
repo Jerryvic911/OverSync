@@ -42,10 +42,10 @@ interface TransactionHistoryProps {
 }
 
 const STORAGE_KEY = 'oversync_transactions_v2';
-const RENDER_API_BASE_URL = 'https://oversync.onrender.com';
+const PRODUCTION_API_BASE_URL = 'https://oversync-k36vx.ondigitalocean.app';
 const API_BASE_URL = import.meta.env.PROD
   ? ''
-  : (import.meta as any).env?.VITE_API_BASE_URL || RENDER_API_BASE_URL;
+  : (import.meta as any).env?.VITE_API_BASE_URL || PRODUCTION_API_BASE_URL;
 
 // Hash patterns that indicate fabricated/demo data, used to filter out legacy entries
 // persisted by older builds. New entries can never match these because v2 only stores

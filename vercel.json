@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://oversync.onrender.com/api/$1"
+      "destination": "https://oversync-k36vx.ondigitalocean.app/api/$1"
     },
     {
       "source": "/(.*)",

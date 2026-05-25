@@ -16,9 +16,10 @@ import { startContractEventPoller, type ContractEventBinding, type ContractEvent
 import { startAdaptivePoll, type AdaptivePollHandle } from './adaptive-poll.js';
 import { fetchIncomingEthPayments } from './eth-incoming-monitor.js';
 import {
-  hasActiveBridgeOrders,
+  expireAbandonedOrders,
   hasAwaitingXlmPayment,
   hasPendingRelayerEscrow,
+  needsChainMonitoring,
 } from './order-poll-utils.js';
 import {
   configureSitePresence,
@@ -542,9 +543,38 @@ async function initializeRelayer() {
     orderData: Record<string, unknown>
   ): Promise<void> => {
     activeOrders.set(orderId, orderData);
+    if (!needsChainMonitoring(activeOrders)) return;
     await ensureChainMonitoring();
     wakeChainPollers();
   };
+
+  const stopChainMonitoring = async (): Promise<void> => {
+    if (!chainMonitoringStarted) return;
+    console.log('💤 Stopping chain monitoring — no in-flight orders');
+    for (const poller of chainPollers) poller.stop();
+    chainPollers.length = 0;
+    escrowFactoryPoller?.stop();
+    escrowFactoryPoller = null;
+    try {
+      await ethereumListener.stopListening();
+    } catch {
+      /* already stopped */
+    }
+    chainMonitoringStarted = false;
+    chainMonitoringPromise = null;
+  };
+
+  const reconcileChainMonitoring = (): void => {
+    const expired = expireAbandonedOrders(activeOrders);
+    if (expired > 0) {
+      console.log(`⏱️ Expired ${expired} abandoned pre-deposit order(s)`);
+    }
+    if (chainMonitoringStarted && !needsChainMonitoring(activeOrders)) {
+      void stopChainMonitoring();
+    }
+  };
+
+  setInterval(reconcileChainMonitoring, 60_000);
 
   configureSitePresence(RELAYER_CONFIG.visitorTtlMs);
 
@@ -647,6 +677,24 @@ async function initializeRelayer() {
   app.get('/api/wake', (_req, res) => {
     handleVisitorWake();
     res.status(204).end();
+  });
+
+  // Debug: verify lazy monitoring + stuck orders (safe to expose — no secrets).
+  app.get('/api/debug/chain-monitor', (_req, res) => {
+    reconcileChainMonitoring();
+    const statuses: Record<string, number> = {};
+    for (const order of activeOrders.values()) {
+      const s = String(order?.status ?? 'unknown');
+      statuses[s] = (statuses[s] ?? 0) + 1;
+    }
+    res.json({
+      chainMonitoringStarted,
+      needsChainMonitoring: needsChainMonitoring(activeOrders),
+      activeOrderCount: activeOrders.size,
+      hasRecentVisitor: hasRecentVisitor(),
+      orderStatuses: statuses,
+      build: 'lazy-chain-monitor-v2',
+    });
   });
 
   // GET /api/prices
@@ -2770,7 +2818,7 @@ async function initializeRelayer() {
           label: 'escrow-factory',
           intervalMs: RELAYER_CONFIG.activePollIntervalMs,
           idleIntervalMs: RELAYER_CONFIG.idlePollIntervalMs,
-          isActive: () => hasActiveBridgeOrders(activeOrders),
+          isActive: () => needsChainMonitoring(activeOrders),
           isAttentive: () => hasRecentVisitor(),
         }
       );
@@ -2781,7 +2829,7 @@ async function initializeRelayer() {
     if (DEFAULT_NETWORK_MODE !== 'mainnet') {
       console.log('🔄 Starting EthereumEventListener for HTLCBridge monitoring');
       ethereumListener.configurePolling({
-        isActive: () => hasActiveBridgeOrders(activeOrders),
+        isActive: () => needsChainMonitoring(activeOrders),
         isAttentive: () => hasRecentVisitor(),
       });
       await ethereumListener.startListening();

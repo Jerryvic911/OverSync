@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useFreighter } from '../hooks/useFreighter';
 import { 
   Horizon, 
   Asset, 
@@ -24,6 +23,7 @@ declare global {
 interface BridgeFormProps {
   ethAddress: string;
   stellarAddress: string;
+  signStellarTransaction: (xdr: string, networkPassphrase?: string) => Promise<string>;
 }
 
   // Fixed token information
@@ -158,7 +158,7 @@ const API_BASE_URL = import.meta.env.PROD
   : import.meta.env.VITE_API_BASE_URL || PRODUCTION_API_BASE_URL;
 const ENABLE_MOCK_DATA = import.meta.env.VITE_ENABLE_MOCK_DATA === 'true';
 
-export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormProps) {
+export default function BridgeForm({ ethAddress, stellarAddress, signStellarTransaction }: BridgeFormProps) {
   const [direction, setDirection] = useState<'eth_to_xlm' | 'xlm_to_eth'>('eth_to_xlm');
   const [networkInfo, setNetworkInfo] = useState(() => {
     const currentNetwork = getCurrentNetwork();
@@ -230,9 +230,6 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
   const [isLoadingRate, setIsLoadingRate] = useState(false);
   const [rateLastUpdated, setRateLastUpdated] = useState<Date | null>(null);
   
-  // Freighter hook for Stellar transactions
-  const { signTransaction } = useFreighter();
-
   // From ve To tokenları
   const fromToken = direction === 'eth_to_xlm' ? ETH_TOKEN : XLM_TOKEN;
   const toToken = direction === 'eth_to_xlm' ? XLM_TOKEN : ETH_TOKEN;
@@ -936,7 +933,7 @@ export default function BridgeForm({ ethAddress, stellarAddress }: BridgeFormPro
           console.log('📝 Signing transaction with Freighter...');
           
           // Sign with Freighter using correct network
-          const signedXdr = await signTransaction(transaction.toXDR(), stellarNetworkPassphrase);
+          const signedXdr = await signStellarTransaction(transaction.toXDR(), stellarNetworkPassphrase);
           
           console.log('✅ Stellar transaction signed!');
           

@@ -124,15 +124,20 @@ export function useFreighter() {
   }, []);
 
   // Sign transaction
-  const signTransaction = useCallback(async (xdr: string, networkPassphrase?: string) => {
-    if (!state.address) {
+  const signTransaction = useCallback(async (
+    xdr: string,
+    networkPassphrase?: string,
+    addressOverride?: string,
+  ) => {
+    const signerAddress = addressOverride ?? state.address;
+    if (!signerAddress) {
       throw new Error('Wallet not connected');
     }
 
     try {
       const result = await freighterApi.signTransaction(xdr, {
         networkPassphrase,
-        address: state.address,
+        address: signerAddress,
       });
       return result.signedTxXdr;
     } catch (error) {

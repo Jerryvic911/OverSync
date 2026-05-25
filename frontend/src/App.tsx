@@ -54,6 +54,7 @@ function App() {
     error: stellarError,
     connect: connectFreighter,
     disconnect: disconnectFreighter,
+    signTransaction: signStellarTransaction,
   } = useFreighter();
 
   // Toast hook
@@ -503,6 +504,9 @@ function App() {
             <BridgeForm
               ethAddress={ethAddress}
               stellarAddress={stellarAddress || ''}
+              signStellarTransaction={(xdr, networkPassphrase) =>
+                signStellarTransaction(xdr, networkPassphrase, stellarAddress || undefined)
+              }
             />
           )}
 

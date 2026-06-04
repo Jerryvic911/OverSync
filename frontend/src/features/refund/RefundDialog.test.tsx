@@ -2,7 +2,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RefundDialog } from './RefundDialog';
 import { makeEthereumHTLCClient } from '../../lib/sdk-context';
-import { isTestnet } from '../../config/networks';
 import { useNetworkMode } from '../../lib/useNetworkMode';
 import { Address } from 'viem';
 import { vi } from 'vitest';
@@ -24,7 +23,6 @@ vi.mock('../../lib/useNetworkMode', () => ({
 
 const mockUserAddress = '0x1234567890123456789012345678901234567890' as Address;
 const mockOrderId = '42';
-const mockTimelock = Math.floor(Date.now() / 1000) - 10; // Expired 10 seconds ago
 const mockAmountWei = '1000000000000000000'; // 1 ETH in wei
 
 const mockNetworkState = {
@@ -166,7 +164,7 @@ describe('RefundDialog', () => {
         timelockUnixSeconds={timelockPast}
         amountWei={mockAmountWei}
         contractMode="v1-mainnet-htlc"
-        v1ContractAddress='0x1234567890123456789012345678901234567890' as Address
+        v1ContractAddress={'0x1234567890123456789012345678901234567890' as Address}
       />);
       // Wait for the phase to be ready (should be immediate)
       await waitFor(() => {

@@ -126,16 +126,17 @@ describe("cross-chain HTLC differential harness", () => {
 
   // ── Real EVM execution via Anvil + deployed HTLCEscrow ──────────────────
 describe("real EVM HTLCEscrow (Anvil)", () => {
-    let fixture: RealEvmHtlcFixture;
+    let fixture: RealEvmHtlcFixture | undefined;
 
     beforeAll(async () => {
       fixture = await startEvmFixture();
     }, 60_000);
 
-    afterAll(async () => {
-      await fixture.stop();
-    });
-
+   afterAll(async () => {
+  if (fixture) {
+    await fixture.stop();
+  }
+});
     it("deploys and accepts a valid sha256 preimage from @oversync/sdk — order becomes Claimed", async () => {
       const secret = generateSecret();
 

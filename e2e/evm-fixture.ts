@@ -26,9 +26,6 @@ const artifactPath = join(
   __dirname,
   "../contracts/artifacts/contracts/v2/HTLCEscrow.sol/HTLCEscrow.json"
 );
-const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
-const HTLC_ABI = artifact.abi;
-const HTLC_BYTECODE = artifact.bytecode as string;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -55,10 +52,10 @@ const STATUS_MAP = ["Funded", "Claimed", "Refunded"] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function decodeCustomError(data: string | undefined): string | null {
+function decodeCustomError(abi: unknown[], data: string | undefined): string | null {
   if (!data || data.length < 10) return null;
   const selector = data.slice(0, 10).toLowerCase();
-  const iface = new ethers.Interface(HTLC_ABI);
+  const iface = new ethers.Interface(abi);
   for (const fragment of iface.fragments) {
     if (fragment.type === "error") {
       const computed = iface.getError(fragment.name)?.selector;
@@ -111,6 +108,11 @@ async function spawnHardhatNode(): Promise<ChildProcess> {
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
 export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
+
+  // Load artifact here, not at module level — ensures pretest compile runs first
+  const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+  const HTLC_ABI = artifact.abi;
+  const HTLC_BYTECODE = artifact.bytecode as string;
   // Spawn a fresh Hardhat node for this test
   const nodeProcess = await spawnHardhatNode();
 
@@ -179,7 +181,7 @@ export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
         return "";
       } catch (e: any) {
         const rawData: string | undefined = e?.data ?? e?.error?.data;
-        const decoded = decodeCustomError(rawData);
+        const decoded = decodeCustomError(HTLC_ABI, rawData);
         if (decoded) return decoded;
         return e?.errorName ?? e?.reason ?? e?.message ?? String(e);
       }

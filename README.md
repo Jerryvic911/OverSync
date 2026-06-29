@@ -212,13 +212,15 @@ pnpm --filter @oversync/contracts exec hardhat test test/v2
 cd soroban && cargo test --release && cd ..
 
 # Run the cross-chain differential test harness (EVM ↔ Soroban hashlock
-# parity). The harness drives both TypeScript simulators AND a real
-# HTLCEscrow deployed on a local Hardhat node.
+# parity). The harness drives both TypeScript simulators and a real
+# HTLCEscrow deployed on a temporary local Hardhat node.
 #
-# Prerequisites — start the local EVM node in a separate terminal first:
-#   cd contracts && pnpm hardhat compile && pnpm hardhat node
+# The test runner automatically:
+# - Compiles the Solidity contracts
+# - Starts a local Hardhat node
+# - Stops the node when the tests finish
 #
-# Then in this terminal:
+# No manual Hardhat node is required.
 pnpm test:e2e
 
 # Run coordinator

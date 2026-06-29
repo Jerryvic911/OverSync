@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-"pretest": "cd ../contracts && pnpm hardhat compile",
+    "pretest": "cd ../contracts && pnpm hardhat compile",
     "test": "pnpm --filter @oversync/contracts compile && vitest run",
     "test:watch": "vitest",
     "load-test": "tsx load-test/harness.ts"

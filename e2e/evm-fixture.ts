@@ -1,21 +1,20 @@
 /**
  * evm-fixture.ts
  *
- * Deploys HTLCEscrow against Hardhat's in-process network using ethers v6.
+ * Deploys HTLCEscrow against a Hardhat node that is spawned
+ * automatically as a child process — no manual `pnpm hardhat node`
+ * required. The node is started in startEvmFixture() and killed in
+ * stop(), so the suite is fully self-contained.
  *
  * Prerequisites:
- *   - Run `pnpm hardhat compile` inside `contracts/` at least once.
- *   - Start the Hardhat node in a separate terminal:
- *       cd contracts && pnpm hardhat node
- *
- * Local EVM fixture:
- *   startEvmFixture() calls hardhat_reset before every test so nonces
- *   and contract addresses are fully deterministic across test runs.
+ *   - Run `pnpm --filter @oversync/e2e test` from the repo root.
+ *     The pretest script compiles the contracts automatically.
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
 import { ethers } from "ethers";
 
 export type Hex = `0x${string}`;
@@ -37,8 +36,6 @@ const AMOUNT = ethers.parseEther("0.5");
 const SAFETY_DEPOSIT = 0n;
 const ZERO_ADDR = ethers.ZeroAddress;
 const HARDHAT_RPC = "http://127.0.0.1:8545";
-
-// Hardhat default funded accounts (publicly known — never use on mainnet)
 const DEPLOYER_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const BENEFICIARY_KEY =
@@ -58,7 +55,6 @@ const STATUS_MAP = ["Funded", "Claimed", "Refunded"] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Decode a raw 4-byte revert selector against the contract ABI. */
 function decodeCustomError(data: string | undefined): string | null {
   if (!data || data.length < 10) return null;
   const selector = data.slice(0, 10).toLowerCase();
@@ -72,21 +68,57 @@ function decodeCustomError(data: string | undefined): string | null {
   return null;
 }
 
+/** Spawn a Hardhat node and wait until it is ready to accept connections. */
+async function spawnHardhatNode(): Promise<ChildProcess> {
+  const contractsDir = join(__dirname, "../contracts");
+
+  const node = spawn("pnpm", ["hardhat", "node"], {
+    cwd: contractsDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: true,
+  });
+
+  // Wait until the node prints its ready message
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Hardhat node did not start within 30s"));
+    }, 30_000);
+
+    node.stdout?.on("data", (chunk: Buffer) => {
+      if (chunk.toString().includes("Started HTTP and WebSocket JSON-RPC server")) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+
+    node.stderr?.on("data", (chunk: Buffer) => {
+      const msg = chunk.toString();
+      if (msg.includes("Error") || msg.includes("error")) {
+        clearTimeout(timeout);
+        reject(new Error(`Hardhat node error: ${msg}`));
+      }
+    });
+
+    node.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`Hardhat node exited with code ${code}`));
+    });
+  });
+
+  return node;
+}
+
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
 export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
-  // Fresh provider on every call — no cached nonce state carried over
+  // Spawn a fresh Hardhat node for this test
+  const nodeProcess = await spawnHardhatNode();
+
   const provider = new ethers.JsonRpcProvider(HARDHAT_RPC, undefined, {
     cacheTimeout: -1,
     polling: true,
   });
 
-  // Reset Hardhat to block 0 — nonces restart at 0, state is clean
-  await provider.send("hardhat_reset", []);
-
-  // NonceManager wraps the wallet and always queries the node for the
-  // current nonce instead of incrementing an internal counter — this
-  // is the ethers v6 solution to stale-nonce after hardhat_reset.
   const deployerWallet = new ethers.Wallet(DEPLOYER_KEY, provider);
   const beneficiaryWallet = new ethers.Wallet(BENEFICIARY_KEY, provider);
   const deployer = new ethers.NonceManager(deployerWallet);
@@ -98,7 +130,6 @@ export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
   await contract.waitForDeployment();
   const contractAddress = await contract.getAddress();
 
-  // Reset NonceManager counters after deploy so createOrder starts fresh
   deployer.reset();
   beneficiary.reset();
 
@@ -108,8 +139,6 @@ export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
   return {
     async createOrder(hashlock: Hex, timelockSeconds: number): Promise<bigint> {
       const total = AMOUNT + SAFETY_DEPOSIT;
-
-      // Reset before each tx so NonceManager re-queries from the node
       deployer.reset();
 
       const tx = await escrow.createOrder(
@@ -145,7 +174,6 @@ export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
     },
 
     async claimOrderExpectRevert(orderId: bigint, preimage: Hex): Promise<string> {
-      // staticCall never broadcasts — no nonce consumed
       try {
         await escrowAsBeneficiary.claimOrder.staticCall(orderId, preimage);
         return "";
@@ -164,6 +192,9 @@ export async function startEvmFixture(): Promise<RealEvmHtlcFixture> {
 
     async stop(): Promise<void> {
       await provider.destroy();
+      nodeProcess.kill();
+      // Give the process a moment to clean up the port
+      await new Promise((r) => setTimeout(r, 500));
     },
   };
 }

@@ -128,11 +128,11 @@ describe("cross-chain HTLC differential harness", () => {
 describe("real EVM HTLCEscrow (Anvil)", () => {
     let fixture: RealEvmHtlcFixture;
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       fixture = await startEvmFixture();
-    }, 30_000);
+    }, 60_000);
 
-    afterEach(async () => {
+    afterAll(async () => {
       await fixture.stop();
     });
 
